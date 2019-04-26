@@ -33,7 +33,7 @@
     "src"
   ],
   "dependencies": {
-    "@loopback/http-server": "^1.1.13",
+    "@loopback/http-server": "^1.1.15",
     "express": "^4.16.4"
   },
   "devDependencies": {
