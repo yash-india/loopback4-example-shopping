@@ -65,7 +65,7 @@
     "@commitlint/cli": "^7.5.2",
     "@commitlint/config-conventional": "^7.5.0",
     "@commitlint/travis-cli": "^7.5.2",
-    "@loopback/build": "^1.4.3",
+    "@loopback/build": "^1.5.1",
     "@loopback/testlab": "^1.2.4",
     "@loopback/tslint-config": "^2.0.4",
     "@types/bcryptjs": "^2.4.2",
