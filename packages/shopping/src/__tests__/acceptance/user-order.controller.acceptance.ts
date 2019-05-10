@@ -123,6 +123,7 @@ describe('UserOrderController acceptance tests', () => {
 
   async function givenAUser() {
     const user = {
+      id: '1',
       email: 'loopback@example.com',
       password: 'p4ssw0rd',
       firstname: 'Example',

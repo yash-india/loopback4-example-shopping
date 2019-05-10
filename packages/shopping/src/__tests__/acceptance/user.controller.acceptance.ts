@@ -3,8 +3,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
 
-import {Client, expect, toJSON} from '@loopback/testlab';
-import {Response} from 'superagent';
+import {Client, expect /*, toJSON*/} from '@loopback/testlab';
 import {ShoppingApplication} from '../..';
 import {UserRepository, OrderRepository} from '../../repositories';
 import {MongoDataSource} from '../../datasources';
@@ -13,9 +12,6 @@ import {
   createRecommendationServer,
   HttpServer,
 } from 'loopback4-example-recommender';
-import * as _ from 'lodash';
-import {JWTAuthenticationService} from '../../services/JWT.authentication.service';
-import {PasswordHasherBindings, JWTAuthenticationBindings} from '../../keys';
 const recommendations = require('loopback4-example-recommender/data/recommendations.json');
 
 describe('UserController', () => {
@@ -26,6 +22,7 @@ describe('UserController', () => {
   const userRepo = new UserRepository(mongodbDS, orderRepo);
 
   const user = {
+    id: '1',
     email: 'test@loopback.io',
     password: 'p4ssw0rd',
     firstname: 'Example',
@@ -59,6 +56,7 @@ describe('UserController', () => {
     const res = await client
       .post('/users')
       .send({
+        id: '1',
         password: 'p4ssw0rd',
         firstname: 'Example',
         surname: 'User',
@@ -73,6 +71,7 @@ describe('UserController', () => {
     const res = await client
       .post('/users')
       .send({
+        id: '1',
         email: 'test@loop&back.io',
         password: 'p4ssw0rd',
         firstname: 'Example',
@@ -87,6 +86,7 @@ describe('UserController', () => {
     const res = await client
       .post('/users')
       .send({
+        id: '1',
         email: 'test@loopback.io',
         firstname: 'Example',
         surname: 'User',
@@ -100,21 +100,141 @@ describe('UserController', () => {
   });
 
   it('throws error for POST /users with a string', async () => {
-    await client
+    const res = await client
       .post('/users')
       .send('hello')
       .expect(415);
+    expect(res.body.error.message).to.equal(
+      'Content-type application/x-www-form-urlencoded does not match [application/json].',
+    );
   });
 
   it('returns a user with given id when GET /users/{id} is invoked', async () => {
     const newUser = await userRepo.create(user);
     delete newUser.password;
     delete newUser.orders;
-    // MongoDB returns an id object we need to convert to string
-    // since the REST API returns a string for the id property.
-    newUser.id = newUser.id.toString();
 
     await client.get(`/users/${newUser.id}`).expect(200, newUser.toJSON());
+  });
+
+  describe('authentication', () => {
+    it('login returns a valid token', async () => {
+      await client
+        .post('/users')
+        .send(user)
+        .expect(200);
+
+      const res = await client
+        .post('/users/login')
+        .send({email: user.email, password: user.password})
+        .expect(200);
+
+      const token = res.body.token;
+      expect(token).to.not.be.Null();
+      expect(token).to.be.String();
+      expect(token).to.not.be.empty();
+      const parts = token.split('.');
+      //token has 3 parts separated by '.'
+      expect(parts.length).to.equal(3);
+    });
+
+    it('login returns an error when invalid email is used', async () => {
+      await client
+        .post('/users')
+        .send(user)
+        .expect(200);
+
+      const res = await client
+        .post('/users/login')
+        .send({email: 'idontexist@example.com', password: user.password})
+        .expect(404);
+
+      expect(res.body.error.message).to.equal(
+        'User with email idontexist@example.com not found.',
+      );
+    });
+
+    it('login returns an error when invalid password is used', async () => {
+      await client
+        .post('/users')
+        .send(user)
+        .expect(200);
+
+      const res = await client
+        .post('/users/login')
+        .send({email: user.email, password: 'wrongpassword'})
+        .expect(401);
+
+      expect(res.body.error.message).to.equal(
+        'The credentials are not correct.',
+      );
+    });
+
+    it('users/me returns the current user profile when a valid token is provided', async () => {
+      await client
+        .post('/users')
+        .send(user)
+        .expect(200);
+
+      let res = await client
+        .post('/users/login')
+        .send({email: user.email, password: user.password})
+        .expect(200);
+
+      const token = res.body.token;
+
+      res = await client
+        .get('/users/me')
+        .set('Authorization', 'Bearer ' + token)
+        .expect(200);
+
+      const userProfile = res.body;
+      expect(userProfile.id).to.equal(user.id);
+      expect(userProfile.name).to.equal(`${user.firstname} ${user.surname}`);
+    });
+
+    it('users/me returns an error when a token is not provided', async () => {
+      const res = await client.get('/users/me').expect(401);
+
+      expect(res.body.error.message).to.equal(
+        'Authorization header not found.',
+      );
+    });
+
+    it('users/me returns an error when an invalid token is provided', async () => {
+      const res = await client
+        .get('/users/me')
+        .set('Authorization', 'Bearer ' + 'xxx.yyy.zzz')
+        .expect(401);
+
+      expect(res.body.error.message).to.equal(
+        'Error verifying token : invalid token',
+      );
+    });
+
+    it(`users/me returns an error when 'Bearer ' is not found in Authorization header`, async () => {
+      const res = await client
+        .get('/users/me')
+        .set('Authorization', 'NotB3@r3r ' + 'xxx.yyy.zzz')
+        .expect(401);
+
+      expect(res.body.error.message).to.equal(
+        "Authorization header is not of type 'Bearer'.",
+      );
+    });
+
+    it('users/me returns an error when an expired token is provided', async () => {
+      const expiredToken =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEiLCJuYW1lIjoiRXhhbXBsZSBVc2VyIiwiaWF0IjoxNTU3NTE1MTg1LCJleHAiOjE1NTc1MTUyNDV9.NZ31amMztvIYBth3SRY9fxiZTukObpgV2gSmJZ10pwY';
+      const res = await client
+        .get('/users/me')
+        .set('Authorization', 'Bearer ' + expiredToken)
+        .expect(401);
+
+      expect(res.body.error.message).to.equal(
+        'Error verifying token : jwt expired',
+      );
+    });
   });
 
   describe('user product recommendation (service) api', () => {
@@ -135,71 +255,6 @@ describe('UserController', () => {
       await client
         .get(`/users/${newUser.id}/recommend`)
         .expect(200, recommendations);
-    });
-  });
-
-  describe('authentication functions', () => {
-    let plainPassword: string;
-    let jwtAuthService: JWTAuthenticationService;
-
-    before('create new user', async () => {
-      app.bind(PasswordHasherBindings.ROUNDS).to(4);
-
-      const passwordHasher = await app.get(
-        PasswordHasherBindings.PASSWORD_HASHER,
-      );
-      plainPassword = user.password;
-      user.password = await passwordHasher.hashPassword(user.password);
-      jwtAuthService = await app.get(JWTAuthenticationBindings.SERVICE);
-    });
-
-    it('login returns a valid token', async () => {
-      const newUser = await userRepo.create(user);
-      await client
-        .post('/users/login')
-        .send({email: newUser.email, password: plainPassword})
-        .expect(200)
-        .then(verifyToken);
-
-      function verifyToken(res: Response) {
-        const token = res.body.token;
-        expect(token).to.not.be.empty();
-      }
-    });
-
-    it('login returns an error when invalid credentials are used', async () => {
-      // tslint:disable-next-line:no-unused
-      const newUser = await userRepo.create(user);
-      await client
-        .post('/users/login')
-        .send({email: user.email, password: 'wrongpassword'})
-        .expect(401);
-    });
-
-    it('/me returns the current user', async () => {
-      const newUser = await userRepo.create(user);
-      const token = await jwtAuthService.getAccessTokenForUser({
-        email: newUser.email,
-        password: plainPassword,
-      });
-
-      newUser.id = newUser.id.toString();
-      const me = _.pick(toJSON(newUser), ['id', 'email']);
-
-      await client
-        .get('/users/me')
-        .set('Authorization', 'Bearer ' + token)
-        .expect(200, me);
-    });
-
-    it('/me returns 401 when the token is not provided', async () => {
-      const newUser = await userRepo.create(user);
-      await jwtAuthService.getAccessTokenForUser({
-        email: newUser.email,
-        password: plainPassword,
-      });
-
-      await client.get('/users/me').expect(401);
     });
   });
 

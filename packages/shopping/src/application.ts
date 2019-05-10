@@ -8,21 +8,19 @@ import {ApplicationConfig, BindingKey} from '@loopback/core';
 import {RepositoryMixin} from '@loopback/repository';
 import {RestApplication} from '@loopback/rest';
 import {ServiceMixin} from '@loopback/service-proxy';
-import {MySequence} from './sequence';
+import {MyAuthenticationSequence} from './sequence';
+import {JWTAuthenticationStrategyBindings, UserServiceBindings} from './keys';
+import {JWTService} from './services/jwt-service';
+import {MyUserService} from './services/user-service';
+
 import * as path from 'path';
 import {
-  AuthenticationBindings,
   AuthenticationComponent,
+  registerAuthenticationStrategy,
 } from '@loopback/authentication';
-import {JWTAuthenticationBindings, PasswordHasherBindings} from './keys';
-import {StrategyResolverProvider} from './providers/strategy.resolver.provider';
-import {AuthenticateActionProvider} from './providers/custom.authentication.provider';
-import {
-  JWTAuthenticationService,
-  JWT_SECRET,
-} from './services/JWT.authentication.service';
+import {PasswordHasherBindings} from './keys';
 import {BcryptHasher} from './services/hash.password.bcryptjs';
-import {JWTStrategy} from './authentication-strategies/JWT.strategy';
+import {JWTAuthenticationStrategy} from './authentication-strategies/jwt-strategy';
 
 /**
  * Information from package.json
@@ -47,26 +45,27 @@ export class ShoppingApplication extends BootMixin(
 
     // Bind authentication component related elements
     this.component(AuthenticationComponent);
-    this.bind(AuthenticationBindings.AUTH_ACTION).toProvider(
-      AuthenticateActionProvider,
-    );
-    this.bind(AuthenticationBindings.STRATEGY).toProvider(
-      StrategyResolverProvider,
+
+    registerAuthenticationStrategy(this, JWTAuthenticationStrategy);
+
+    this.bind(JWTAuthenticationStrategyBindings.TOKEN_SECRET).to('myjwts3cr3t');
+
+    this.bind(JWTAuthenticationStrategyBindings.TOKEN_EXPIRES_IN).to('300');
+
+    this.bind(JWTAuthenticationStrategyBindings.TOKEN_SERVICE).toClass(
+      JWTService,
     );
 
-    // Bind JWT authentication strategy related elements
-    this.bind(JWTAuthenticationBindings.STRATEGY).toClass(JWTStrategy);
-    this.bind(JWTAuthenticationBindings.SECRET).to(JWT_SECRET);
-    this.bind(JWTAuthenticationBindings.SERVICE).toClass(
-      JWTAuthenticationService,
-    );
+    //BasicAuthenticationUserService
 
-    // Bind bcrypt hash services
+    // // Bind bcrypt hash services
     this.bind(PasswordHasherBindings.ROUNDS).to(10);
     this.bind(PasswordHasherBindings.PASSWORD_HASHER).toClass(BcryptHasher);
 
+    this.bind(UserServiceBindings.USER_SERVICE).toClass(MyUserService);
+
     // Set up the custom sequence
-    this.sequence(MySequence);
+    this.sequence(MyAuthenticationSequence);
 
     // Set up default home page
     this.static('/', path.join(__dirname, '../public'));
