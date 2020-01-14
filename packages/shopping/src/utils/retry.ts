@@ -5,7 +5,7 @@
 
 import {HttpErrors} from '@loopback/rest';
 import {promisify} from 'util';
-import * as debugFactory from 'debug';
+import debugFactory from 'debug';
 const debug = debugFactory('loopback:example:shopping');
 
 export interface TaskStatus<T> {
@@ -48,6 +48,7 @@ export async function retry<T>(
 ): Promise<T> {
   if (maxTries < 1) maxTries = 1;
   let triesLeft = maxTries;
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     debug(
       'Try %s (%d/%d)',

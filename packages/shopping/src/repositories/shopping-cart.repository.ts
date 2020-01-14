@@ -31,8 +31,8 @@ export class ShoppingCartRepository extends DefaultKeyValueRepository<
     const task: Task<ShoppingCart> = {
       run: async () => {
         const addItemToCart = (cart: ShoppingCart | null) => {
-          cart = cart || new ShoppingCart({userId});
-          cart.items = cart.items || [];
+          cart = cart ?? new ShoppingCart({userId});
+          cart.items = cart.items ?? [];
           cart.items.push(item);
           return cart;
         };
@@ -66,9 +66,10 @@ export class ShoppingCartRepository extends DefaultKeyValueRepository<
     check: (current: ShoppingCart | null) => ShoppingCart | null,
   ) {
     const connector = this.kvModelClass.dataSource!.connector!;
-    // tslint:disable-next-line:no-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const execute = promisify((cmd: string, args: any[], cb: Function) => {
-      return connector.execute!(cmd, args, cb);
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      connector.execute!(cmd, args, cb);
     });
     /**
      * - WATCH userId

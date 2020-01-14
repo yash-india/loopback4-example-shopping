@@ -5,7 +5,6 @@
 
 import {Request, RestBindings, get, ResponseObject} from '@loopback/rest';
 import {inject} from '@loopback/context';
-import {} from '@loopback/openapi-v3-types';
 
 /**
  * OpenAPI response for ping()
@@ -22,8 +21,8 @@ const PING_RESPONSE: ResponseObject = {
           url: {type: 'string'},
           headers: {
             type: 'object',
-            patternProperties: {
-              '^.*$': {type: 'string'},
+            properties: {
+              'Content-Type': {type: 'string'},
             },
             additionalProperties: false,
           },

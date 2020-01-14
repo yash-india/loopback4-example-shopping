@@ -5,7 +5,16 @@
 
 import {inject} from '@loopback/core';
 import {juggler, AnyObject} from '@loopback/repository';
-const config = require('./recommender.datasource.json');
+const config = require('./recommender.datasource.config.json');
+
+function updateConfig(dsConfig: AnyObject) {
+  if (process.env.KUBERNETES_SERVICE_HOST) {
+    const host = process.env.RECOMMENDER_REST_SERVICE_HOST ?? 'localhost';
+    const port = +process.env.RECOMMENDER_REST_SERVICE_PORT_REST! || 3001;
+    dsConfig.operations[0].template.url = `http://${host}:${port}/{userId}`;
+  }
+  return dsConfig;
+}
 
 export class RecommenderDataSource extends juggler.DataSource {
   static dataSourceName = 'recommender';
@@ -14,6 +23,6 @@ export class RecommenderDataSource extends juggler.DataSource {
     @inject('datasources.config.recommender', {optional: true})
     dsConfig: AnyObject = config,
   ) {
-    super(dsConfig);
+    super(updateConfig(dsConfig));
   }
 }

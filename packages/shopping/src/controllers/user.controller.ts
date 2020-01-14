@@ -3,50 +3,117 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
 
-import {repository} from '@loopback/repository';
-import {post, param, get, requestBody} from '@loopback/rest';
+import {repository, model, property} from '@loopback/repository';
+import {validateCredentials} from '../services/validator';
+import {
+  post,
+  param,
+  get,
+  requestBody,
+  HttpErrors,
+  getModelSchemaRef,
+} from '@loopback/rest';
 import {User, Product} from '../models';
 import {UserRepository} from '../repositories';
 import {RecommenderService} from '../services/recommender.service';
-import {inject, Setter} from '@loopback/core';
+import {inject} from '@loopback/core';
 import {
   authenticate,
-  UserProfile,
-  AuthenticationBindings,
+  TokenService,
+  UserService,
 } from '@loopback/authentication';
+import {UserProfile, securityId, SecurityBindings} from '@loopback/security';
 import {
   CredentialsRequestBody,
   UserProfileSchema,
 } from './specs/user-controller.specs';
 import {Credentials} from '../repositories/user.repository';
 import {PasswordHasher} from '../services/hash.password.bcryptjs';
-import {JWTAuthenticationService} from '../services/JWT.authentication.service';
-import {JWTAuthenticationBindings, PasswordHasherBindings} from '../keys';
-import {validateCredentials} from '../services/JWT.authentication.service';
-import * as _ from 'lodash';
+
+import {
+  TokenServiceBindings,
+  PasswordHasherBindings,
+  UserServiceBindings,
+} from '../keys';
+import _ from 'lodash';
+import {OPERATION_SECURITY_SPEC} from '../utils/security-spec';
+
+@model()
+export class NewUserRequest extends User {
+  @property({
+    type: 'string',
+    required: true,
+  })
+  password: string;
+}
 
 export class UserController {
   constructor(
     @repository(UserRepository) public userRepository: UserRepository,
     @inject('services.RecommenderService')
     public recommender: RecommenderService,
-    @inject.setter(AuthenticationBindings.CURRENT_USER)
-    public setCurrentUser: Setter<UserProfile>,
     @inject(PasswordHasherBindings.PASSWORD_HASHER)
-    public passwordHahser: PasswordHasher,
-    @inject(JWTAuthenticationBindings.SERVICE)
-    public jwtAuthenticationService: JWTAuthenticationService,
+    public passwordHasher: PasswordHasher,
+    @inject(TokenServiceBindings.TOKEN_SERVICE)
+    public jwtService: TokenService,
+    @inject(UserServiceBindings.USER_SERVICE)
+    public userService: UserService<User, Credentials>,
   ) {}
 
-  @post('/users')
-  async create(@requestBody() user: User): Promise<User> {
-    validateCredentials(_.pick(user, ['email', 'password']));
-    user.password = await this.passwordHahser.hashPassword(user.password);
+  @post('/users', {
+    responses: {
+      '200': {
+        description: 'User',
+        content: {
+          'application/json': {
+            schema: {
+              'x-ts-type': User,
+            },
+          },
+        },
+      },
+    },
+  })
+  async create(
+    @requestBody({
+      content: {
+        'application/json': {
+          schema: getModelSchemaRef(NewUserRequest, {
+            title: 'NewUser',
+          }),
+        },
+      },
+    })
+    newUserRequest: NewUserRequest,
+  ): Promise<User> {
+    // ensure a valid email value and password value
+    validateCredentials(_.pick(newUserRequest, ['email', 'password']));
 
-    // Save & Return Result
-    const savedUser = await this.userRepository.create(user);
-    delete savedUser.password;
-    return savedUser;
+    // encrypt the password
+    const password = await this.passwordHasher.hashPassword(
+      newUserRequest.password,
+    );
+
+    try {
+      // create the new user
+      const savedUser = await this.userRepository.create(
+        _.omit(newUserRequest, 'password'),
+      );
+
+      // set the password
+      await this.userRepository
+        .userCredentials(savedUser.id)
+        .create({password});
+
+      return savedUser;
+    } catch (error) {
+      // MongoError 11000 duplicate key
+      if (error.code === 11000 && error.errmsg.includes('index: uniqueEmail')) {
+        throw new HttpErrors.Conflict('Email value is already taken');
+      } else {
+        throw error;
+      }
+    }
   }
 
   @get('/users/{userId}', {
@@ -64,12 +131,11 @@ export class UserController {
     },
   })
   async findById(@param.path.string('userId') userId: string): Promise<User> {
-    return this.userRepository.findById(userId, {
-      fields: {password: false},
-    });
+    return this.userRepository.findById(userId);
   }
 
   @get('/users/me', {
+    security: OPERATION_SECURITY_SPEC,
     responses: {
       '200': {
         description: 'The current user profile',
@@ -83,15 +149,16 @@ export class UserController {
   })
   @authenticate('jwt')
   async printCurrentUser(
-    @inject('authentication.currentUser') currentUser: UserProfile,
+    @inject(SecurityBindings.USER)
+    currentUserProfile: UserProfile,
   ): Promise<UserProfile> {
-    return currentUser;
+    // (@jannyHou)FIXME: explore a way to generate OpenAPI schema
+    // for symbol property
+    currentUserProfile.id = currentUserProfile[securityId];
+    delete currentUserProfile[securityId];
+    return currentUserProfile;
   }
 
-  // TODO(@jannyHou): missing logout function.
-  // as a stateless authentication method, JWT doesn't actually
-  // have a logout operation. See article for details:
-  // https://medium.com/devgorilla/how-to-log-out-when-using-jwt-a8c7823e8a6
   @get('/users/{userId}/recommend', {
     responses: {
       '200': {
@@ -137,10 +204,15 @@ export class UserController {
   async login(
     @requestBody(CredentialsRequestBody) credentials: Credentials,
   ): Promise<{token: string}> {
-    validateCredentials(credentials);
-    const token = await this.jwtAuthenticationService.getAccessTokenForUser(
-      credentials,
-    );
+    // ensure the user exists, and the password is correct
+    const user = await this.userService.verifyCredentials(credentials);
+
+    // convert a User object into a UserProfile object (reduced set of properties)
+    const userProfile = this.userService.convertToUserProfile(user);
+
+    // create a JSON Web Token based on the user profile
+    const token = await this.jwtService.generateToken(userProfile);
+
     return {token};
   }
 }

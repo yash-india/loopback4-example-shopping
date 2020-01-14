@@ -6,23 +6,23 @@
 import {Client, expect} from '@loopback/testlab';
 import {ShoppingApplication} from '../..';
 import {ShoppingCartRepository} from '../../repositories';
-import {RedisDataSource} from '../../datasources';
 import {ShoppingCart, ShoppingCartItem} from '../../models';
 import {setupApplication} from './helper';
 
 describe('ShoppingCartController', () => {
   let app: ShoppingApplication;
   let client: Client;
-  const cartRepo = new ShoppingCartRepository(new RedisDataSource());
+
+  let cartRepo: ShoppingCartRepository;
 
   before('setupApplication', async () => {
     ({app, client} = await setupApplication());
+    cartRepo = await app.get('repositories.ShoppingCartRepository');
   });
-
-  beforeEach(clearDatabase);
   after(async () => {
     await app.stop();
   });
+  beforeEach(clearDatabase);
 
   it('sets a shopping cart for a user', async () => {
     const cart = givenShoppingCart();
@@ -36,7 +36,7 @@ describe('ShoppingCartController', () => {
   it('throws error if userId does not match the cart', async () => {
     const cart = givenShoppingCart();
     await client
-      .put('/shoppingCarts/not-exist')
+      .put('/shoppingCarts/non-existant-id')
       .set('Content-Type', 'application/json')
       .send(cart)
       .expect(400);
@@ -84,9 +84,9 @@ describe('ShoppingCartController', () => {
       .post(`/shoppingCarts/${cart.userId}/items`)
       .send(newItem)
       .expect(200);
-    const newCart = (await client
-      .get(`/shoppingCarts/${cart.userId}`)
-      .expect(200)).body;
+    const newCart = (
+      await client.get(`/shoppingCarts/${cart.userId}`).expect(200)
+    ).body;
     expect(newCart.items).to.containEql(newItem.toJSON());
   });
 

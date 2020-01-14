@@ -6,19 +6,31 @@
 import {supertest, expect} from '@loopback/testlab';
 import {ShoppingApplication} from '../..';
 import {OrderRepository, UserRepository} from '../../repositories';
-import {MongoDataSource} from '../../datasources';
 import {User, Order} from '../../models';
 import {setupApplication} from './helper';
+import {PasswordHasherBindings} from '../../keys';
 
 describe('UserOrderController acceptance tests', () => {
   let app: ShoppingApplication;
   let client: supertest.SuperTest<supertest.Test>;
-  const mongodbDS = new MongoDataSource();
-  const orderRepo = new OrderRepository(mongodbDS);
-  const userRepo = new UserRepository(mongodbDS, orderRepo);
+
+  const userData = {
+    email: 'testUserCtrl@loopback.io',
+    firstName: 'customer_service',
+  };
+
+  const userPassword = 'p4ssw0rd';
 
   before('setupApplication', async () => {
     ({app, client} = await setupApplication());
+  });
+
+  let userRepo: UserRepository;
+  let orderRepo: OrderRepository;
+
+  before(async () => {
+    orderRepo = await app.get('repositories.OrderRepository');
+    userRepo = await app.get('repositories.UserRepository');
   });
 
   beforeEach(clearDatabase);
@@ -28,22 +40,28 @@ describe('UserOrderController acceptance tests', () => {
 
   it('creates an order for a user with a given orderId', async () => {
     const user = await givenAUser();
-    const userId = user.id.toString();
+    const userId = user.id;
     const order = givenAOrder({userId: userId, orderId: '1'});
+
+    const token = await authenticateUser(user);
 
     await client
       .post(`/users/${userId}/orders`)
+      .set('Authorization', 'Bearer ' + token)
       .send(order)
       .expect(200, order);
   });
 
   it('creates an order for a user without a given orderId', async () => {
     const user = await givenAUser();
-    const userId = user.id.toString();
+    const userId = user.id;
     const order = givenAOrder({userId: userId});
+
+    const token = await authenticateUser(user);
 
     const res = await client
       .post(`/users/${userId}/orders`)
+      .set('Authorization', 'Bearer ' + token)
       .send(order)
       .expect(200);
 
@@ -54,11 +72,14 @@ describe('UserOrderController acceptance tests', () => {
 
   it('throws an error when a userId in path does not match body', async () => {
     const user = await givenAUser();
-    const userId = user.id.toString();
+    const userId = user.id;
     const order = givenAOrder({userId: 'hello'});
+
+    const token = await authenticateUser(user);
 
     await client
       .post(`/users/${userId}/orders`)
+      .set('Authorization', 'Bearer ' + token)
       .set('Content-Type', 'application/json')
       .send(order)
       .expect(400);
@@ -82,13 +103,21 @@ describe('UserOrderController acceptance tests', () => {
       const order = givenAOrder({userId: 'randomUserId', total: 100.99});
       await orderRepo.create(order);
 
+      const token = await authenticateUser(user);
+
       const expected = [savedOrder1.toJSON(), savedOrder2.toJSON()];
-      await client.get(`/users/${userId}/orders`).expect(200, expected);
+      await client
+        .get(`/users/${userId}/orders`)
+        .set('Authorization', 'Bearer ' + token)
+        .expect(200, expected);
     });
 
     it('patches all orders for a given user', async () => {
+      const token = await authenticateUser(user);
+
       await client
         .patch(`/users/${userId}/orders`)
+        .set('Authorization', 'Bearer ' + token)
         .send({total: 9.99})
         .expect(200, {count: 2});
     });
@@ -98,7 +127,12 @@ describe('UserOrderController acceptance tests', () => {
     it.skip('patches orders matching filter for a given user');
 
     it('deletes all orders for a given user', async () => {
-      await client.del(`/users/${userId}/orders`).expect(200, {count: 2});
+      const token = await authenticateUser(user);
+
+      await client
+        .del(`/users/${userId}/orders`)
+        .set('Authorization', 'Bearer ' + token)
+        .expect(200, {count: 2});
     });
 
     // TODO(virkt25): Implement after issue below is fixed.
@@ -107,7 +141,7 @@ describe('UserOrderController acceptance tests', () => {
 
     async function givenUserAndOrders() {
       user = await givenAUser();
-      userId = user.id.toString();
+      userId = user.id;
       order1 = givenAOrder();
       savedOrder1 = await saveOrder(user, order1);
       order2 = givenAOrder();
@@ -122,14 +156,31 @@ describe('UserOrderController acceptance tests', () => {
   }
 
   async function givenAUser() {
-    const user = {
-      email: 'loopback@example.com',
-      password: 'p4ssw0rd',
-      firstname: 'Example',
-      surname: 'User',
-    };
+    const passwordHasher = await app.get(
+      PasswordHasherBindings.PASSWORD_HASHER,
+    );
+    const encryptedPassword = await passwordHasher.hashPassword(userPassword);
 
-    return await userRepo.create(user);
+    const newUser = await userRepo.create(userData);
+
+    // MongoDB returns an id object we need to convert to string
+    newUser.id = newUser.id.toString();
+
+    await userRepo.userCredentials(newUser.id).create({
+      password: encryptedPassword,
+    });
+
+    return newUser;
+  }
+
+  async function authenticateUser(user: User) {
+    const res = await client
+      .post('/users/login')
+      .send({email: user.email, password: userPassword});
+
+    const token = res.body.token;
+
+    return token;
   }
 
   function givenAOrder(partial: Partial<Order> = {}) {
@@ -152,6 +203,6 @@ describe('UserOrderController acceptance tests', () => {
 
   async function saveOrder(user: User, order: Partial<Order>) {
     delete order.userId;
-    return await userRepo.orders(user.id).create(order);
+    return userRepo.orders(user.id).create(order);
   }
 });

@@ -8,21 +8,34 @@ import {ApplicationConfig, BindingKey} from '@loopback/core';
 import {RepositoryMixin} from '@loopback/repository';
 import {RestApplication} from '@loopback/rest';
 import {ServiceMixin} from '@loopback/service-proxy';
-import {MySequence} from './sequence';
-import * as path from 'path';
+import {MyAuthenticationSequence} from './sequence';
 import {
-  AuthenticationBindings,
+  RestExplorerBindings,
+  RestExplorerComponent,
+} from '@loopback/rest-explorer';
+import {
+  TokenServiceBindings,
+  UserServiceBindings,
+  TokenServiceConstants,
+} from './keys';
+import {JWTService} from './services/jwt-service';
+import {MyUserService} from './services/user-service';
+
+import path from 'path';
+import {
   AuthenticationComponent,
+  registerAuthenticationStrategy,
 } from '@loopback/authentication';
-import {JWTAuthenticationBindings, PasswordHasherBindings} from './keys';
-import {StrategyResolverProvider} from './providers/strategy.resolver.provider';
-import {AuthenticateActionProvider} from './providers/custom.authentication.provider';
-import {
-  JWTAuthenticationService,
-  JWT_SECRET,
-} from './services/JWT.authentication.service';
+import {PasswordHasherBindings} from './keys';
 import {BcryptHasher} from './services/hash.password.bcryptjs';
-import {JWTStrategy} from './authentication-strategies/JWT.strategy';
+import {JWTAuthenticationStrategy} from './authentication-strategies/jwt-strategy';
+import {SECURITY_SCHEME_SPEC} from './utils/security-spec';
+import {
+  AuthorizationComponent,
+  AuthorizationTags,
+} from '@loopback/authorization';
+import {createEnforcer} from './services/enforcer';
+import {CasbinAuthorizationProvider} from './services/authorizor';
 
 /**
  * Information from package.json
@@ -42,34 +55,45 @@ export class ShoppingApplication extends BootMixin(
   constructor(options?: ApplicationConfig) {
     super(options);
 
-    // Bind package.json to the application context
-    this.bind(PackageKey).to(pkg);
+    /*
+       This is a workaround until an extension point is introduced
+       allowing extensions to contribute to the OpenAPI specification
+       dynamically.
+    */
+    this.api({
+      openapi: '3.0.0',
+      info: {title: pkg.name, version: pkg.version},
+      paths: {},
+      components: {securitySchemes: SECURITY_SCHEME_SPEC},
+      servers: [{url: '/'}],
+    });
+
+    this.setUpBindings();
 
     // Bind authentication component related elements
     this.component(AuthenticationComponent);
-    this.bind(AuthenticationBindings.AUTH_ACTION).toProvider(
-      AuthenticateActionProvider,
-    );
-    this.bind(AuthenticationBindings.STRATEGY).toProvider(
-      StrategyResolverProvider,
-    );
+    this.component(AuthorizationComponent);
 
-    // Bind JWT authentication strategy related elements
-    this.bind(JWTAuthenticationBindings.STRATEGY).toClass(JWTStrategy);
-    this.bind(JWTAuthenticationBindings.SECRET).to(JWT_SECRET);
-    this.bind(JWTAuthenticationBindings.SERVICE).toClass(
-      JWTAuthenticationService,
-    );
+    // authorization
+    this.bind('casbin.enforcer').toDynamicValue(createEnforcer);
+    this.bind('authorizationProviders.casbin-provider')
+      .toProvider(CasbinAuthorizationProvider)
+      .tag(AuthorizationTags.AUTHORIZER);
 
-    // Bind bcrypt hash services
-    this.bind(PasswordHasherBindings.ROUNDS).to(10);
-    this.bind(PasswordHasherBindings.PASSWORD_HASHER).toClass(BcryptHasher);
+    // authentication
+    registerAuthenticationStrategy(this, JWTAuthenticationStrategy);
 
     // Set up the custom sequence
-    this.sequence(MySequence);
+    this.sequence(MyAuthenticationSequence);
 
     // Set up default home page
     this.static('/', path.join(__dirname, '../public'));
+
+    // Customize @loopback/rest-explorer configuration here
+    this.bind(RestExplorerBindings.CONFIG).to({
+      path: '/explorer',
+    });
+    this.component(RestExplorerComponent);
 
     this.projectRoot = __dirname;
     // Customize @loopback/boot Booter Conventions here
@@ -81,5 +105,26 @@ export class ShoppingApplication extends BootMixin(
         nested: true,
       },
     };
+  }
+
+  setUpBindings(): void {
+    // Bind package.json to the application context
+    this.bind(PackageKey).to(pkg);
+
+    this.bind(TokenServiceBindings.TOKEN_SECRET).to(
+      TokenServiceConstants.TOKEN_SECRET_VALUE,
+    );
+
+    this.bind(TokenServiceBindings.TOKEN_EXPIRES_IN).to(
+      TokenServiceConstants.TOKEN_EXPIRES_IN_VALUE,
+    );
+
+    this.bind(TokenServiceBindings.TOKEN_SERVICE).toClass(JWTService);
+
+    // // Bind bcrypt hash services
+    this.bind(PasswordHasherBindings.ROUNDS).to(10);
+    this.bind(PasswordHasherBindings.PASSWORD_HASHER).toClass(BcryptHasher);
+
+    this.bind(UserServiceBindings.USER_SERVICE).toClass(MyUserService);
   }
 }

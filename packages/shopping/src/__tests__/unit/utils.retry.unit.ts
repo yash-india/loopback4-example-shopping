@@ -11,7 +11,9 @@ describe('sleep()', () => {
     const start = Date.now();
     await sleep(10);
     const duration = Date.now() - start;
-    expect(duration).to.be.greaterThanOrEqual(10);
+    // FIXME(rfeng): The duration is 9ms in some cases of travis build. It's
+    // a sign that the time is not 100% accurate
+    expect(duration).to.be.greaterThanOrEqual(9);
   });
 
   it('defaults invalid time to 1 ms', async () => {
@@ -69,9 +71,9 @@ describe('retry()', () => {
       return 1;
     };
     const task = givenTask(fn);
-    return await expect(
-      retry(task, {maxTries: 5, interval: 1}),
-    ).to.be.rejectedWith(/fail/);
+    return expect(retry(task, {maxTries: 5, interval: 1})).to.be.rejectedWith(
+      /fail/,
+    );
   });
 
   it('retries fails with timeout', async () => {
@@ -81,9 +83,9 @@ describe('retry()', () => {
       return count;
     };
     const task = givenTask(fn);
-    return await expect(
-      retry(task, {maxTries: 5, interval: 1}),
-    ).to.be.rejectedWith(/Failed to count after 5 ms/);
+    return expect(retry(task, {maxTries: 5, interval: 1})).to.be.rejectedWith(
+      /Failed to count after 5 ms/,
+    );
   });
 });
 

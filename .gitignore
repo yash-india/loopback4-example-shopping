@@ -62,5 +62,9 @@ api-docs/
 
 # Transpiled JavaScript files from Typescript
 dist*/
+*.tsbuildinfo
 
 .DS_Store
+.eslintcache
+
+docker-build
