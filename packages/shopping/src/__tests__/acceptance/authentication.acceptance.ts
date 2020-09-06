@@ -1,32 +1,32 @@
-// Copyright IBM Corp. 2019. All Rights Reserved.
+// Copyright IBM Corp. 2019,2020. All Rights Reserved.
 // Node module: loopback4-example-shopping
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
 
-import {expect} from '@loopback/testlab';
-import {validateCredentials} from '../../services/validator';
-import {ShoppingApplication} from '../..';
-import {PasswordHasher} from '../../services/hash.password.bcryptjs';
-import {UserRepository, Credentials} from '../../repositories';
-import {User} from '../../models';
-import {HttpErrors} from '@loopback/rest';
-import {
-  PasswordHasherBindings,
-  UserServiceBindings,
-  TokenServiceBindings,
-} from '../../keys';
-import {setupApplication} from './helper';
 import {TokenService, UserService} from '@loopback/authentication';
+import {TokenServiceBindings} from '@loopback/authentication-jwt';
+import {HttpErrors} from '@loopback/rest';
 import {securityId} from '@loopback/security';
+import {expect} from '@loopback/testlab';
 import _ from 'lodash';
+import {Suite} from 'mocha';
+import {ShoppingApplication} from '../..';
+import {PasswordHasherBindings, UserServiceBindings} from '../../keys';
+import {User} from '../../models';
+import {Credentials, UserRepository} from '../../repositories';
+import {PasswordHasher} from '../../services/hash.password.bcryptjs';
+import {validateCredentials} from '../../services/validator';
+import {setupApplication} from './helper';
 
-describe('authentication services', () => {
+describe('authentication services', function (this: Suite) {
+  this.timeout(5000);
   let app: ShoppingApplication;
 
   const userData = {
     email: 'unittest@loopback.io',
     firstName: 'unit',
     lastName: 'test',
+    roles: ['customer'],
   };
 
   const userPassword = 'p4ssw0rd';
@@ -38,7 +38,7 @@ describe('authentication services', () => {
 
   before(setupApp);
   after(async () => {
-    await app.stop();
+    if (app != null) await app.stop();
   });
 
   let userRepo: UserRepository;
@@ -116,9 +116,10 @@ describe('authentication services', () => {
       [securityId]: newUser.id,
       id: newUser.id,
       name: `${newUser.firstName} ${newUser.lastName}`,
+      roles: ['customer'],
     };
     const userProfile = userService.convertToUserProfile(newUser);
-    expect(expectedUserProfile).to.deepEqual(userProfile);
+    expect(userProfile).to.deepEqual(expectedUserProfile);
   });
 
   it('user service convertToUserProfile() succeeds without optional fields : firstName, lastName', () => {
@@ -201,7 +202,7 @@ describe('authentication services', () => {
   async function setupApp() {
     const appWithClient = await setupApplication();
     app = appWithClient.app;
-    app.bind(PasswordHasherBindings.ROUNDS).to(4);
+    app.bind(PasswordHasherBindings.ROUNDS).to(2);
   }
 
   async function createUser() {

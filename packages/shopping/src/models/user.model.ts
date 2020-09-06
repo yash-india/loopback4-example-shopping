@@ -1,4 +1,4 @@
-// Copyright IBM Corp. 2019. All Rights Reserved.
+// Copyright IBM Corp. 2019,2020. All Rights Reserved.
 // Node module: loopback4-example-shopping
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
@@ -6,6 +6,7 @@
 import {Entity, model, property, hasMany, hasOne} from '@loopback/repository';
 import {Order} from './order.model';
 import {UserCredentials} from './user-credentials.model';
+import {ShoppingCart} from './shopping-cart.model';
 
 @model({
   settings: {
@@ -49,6 +50,15 @@ export class User extends Entity {
 
   @hasOne(() => UserCredentials)
   userCredentials: UserCredentials;
+
+  @hasOne(() => ShoppingCart)
+  shoppingCart: ShoppingCart;
+
+  @property({
+    type: 'array',
+    itemType: 'string',
+  })
+  roles?: string[];
 
   constructor(data?: Partial<User>) {
     super(data);

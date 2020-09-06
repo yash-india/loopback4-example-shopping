@@ -7,8 +7,9 @@
     "loopback"
   ],
   "main": "index.js",
+  "types": "dist/index.d.ts",
   "engines": {
-    "node": ">=8"
+    "node": ">=10.16"
   },
   "scripts": {
     "build": "lb-tsc",
@@ -28,7 +29,14 @@
     "docker:run": "docker run -p 3000:3000 -d shopping"
   },
   "repository": {
-    "type": "git"
+    "type": "git",
+    "url": "https://github.com/strongloop/loopback4-example-shopping.git",
+    "directory": "packages/shopping"
+  },
+  "author": {
+    "name": "LoopBack contributors",
+    "email": "dev@loopback.io",
+    "url": "https://loopback.io"
   },
   "license": "MIT",
   "files": [
@@ -40,44 +48,47 @@
     "src"
   ],
   "dependencies": {
-    "@loopback/authentication": "3.3.0",
-    "@loopback/authorization": "0.4.7",
-    "@loopback/boot": "1.7.1",
-    "@loopback/context": "1.25.1",
-    "@loopback/core": "1.12.1",
-    "@loopback/openapi-v3": "1.11.0",
-    "@loopback/repository": "1.17.0",
-    "@loopback/rest": "1.25.1",
-    "@loopback/rest-explorer": "1.4.7",
-    "@loopback/security": "0.1.10",
-    "@loopback/service-proxy": "1.3.14",
-    "@types/jsonwebtoken": "8.3.6",
+    "@loopback/authentication": "6.0.1",
+    "@loopback/authentication-jwt": "0.6.0",
+    "@loopback/authorization": "0.6.6",
+    "@loopback/boot": "2.5.1",
+    "@loopback/context": "3.10.1",
+    "@loopback/core": "2.9.5",
+    "@loopback/openapi-v3": "3.4.9",
+    "@loopback/repository": "2.11.2",
+    "@loopback/rest": "6.2.0",
+    "@loopback/rest-explorer": "2.2.10",
+    "@loopback/security": "0.2.18",
+    "@loopback/service-proxy": "2.3.8",
+    "@types/jsonwebtoken": "8.5.0",
+    "@types/yaml": "1.9.7",
     "bcryptjs": "2.4.3",
-    "casbin": "3.0.9",
+    "casbin": "5.1.3",
     "debug": "4.1.1",
     "express": "4.17.1",
     "isemail": "3.2.0",
     "jsonwebtoken": "8.5.1",
-    "lodash": "4.17.15",
+    "lodash": "4.17.20",
     "loopback-connector-grpc": "1.3.0",
-    "loopback-connector-kv-redis": "3.0.2",
-    "loopback-connector-mongodb": "5.2.1",
-    "loopback-connector-rest": "3.6.0"
+    "loopback-connector-kv-redis": "4.0.0",
+    "loopback-connector-mongodb": "5.4.0",
+    "loopback-connector-rest": "3.7.0",
+    "yaml": "1.10.0"
   },
   "devDependencies": {
-    "@loopback/build": "3.0.1",
-    "@loopback/testlab": "1.10.1",
+    "@loopback/build": "6.2.2",
+    "@loopback/testlab": "3.2.4",
     "@types/bcryptjs": "2.4.2",
     "@types/debug": "4.1.5",
-    "@types/express": "4.17.2",
-    "@types/lodash": "4.14.149",
-    "@types/mocha": "5.2.7",
-    "@types/node": "12.12.24",
-    "concurrently": "5.0.2",
+    "@types/express": "4.17.8",
+    "@types/lodash": "4.14.161",
+    "@types/mocha": "8.0.3",
+    "@types/node": "12.12.54",
+    "concurrently": "5.3.0",
     "loopback4-example-recommender": "1.1.1",
-    "mocha": "7.0.0",
-    "source-map-support": "0.5.16",
-    "typescript": "3.7.4"
+    "mocha": "8.1.3",
+    "source-map-support": "0.5.19",
+    "typescript": "4.0.2"
   },
   "copyright.owner": "IBM Corp."
 }

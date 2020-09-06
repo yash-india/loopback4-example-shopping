@@ -1,4 +1,4 @@
-// Copyright IBM Corp. 2018. All Rights Reserved.
+// Copyright IBM Corp. 2019,2020. All Rights Reserved.
 // Node module: loopback4-example-shopping
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
@@ -63,8 +63,9 @@ export async function retry<T>(
       await sleep(interval);
     } else {
       // No more retries, timeout
-      const msg = `Failed to ${task.description} after ${maxTries *
-        interval} ms`;
+      const msg = `Failed to ${task.description} after ${
+        maxTries * interval
+      } ms`;
       debug('%s', msg);
       throw new HttpErrors.RequestTimeout(msg);
     }

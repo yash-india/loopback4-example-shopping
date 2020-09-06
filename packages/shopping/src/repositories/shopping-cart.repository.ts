@@ -1,20 +1,20 @@
-// Copyright IBM Corp. 2018. All Rights Reserved.
+// Copyright IBM Corp. 2019,2020. All Rights Reserved.
 // Node module: loopback4-example-shopping
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
 
-import {DefaultKeyValueRepository} from '@loopback/repository';
-import {ShoppingCart, ShoppingCartItem} from '../models';
-import {RedisDataSource} from '../datasources/redis.datasource';
 import {inject} from '@loopback/context';
+import {DefaultKeyValueRepository} from '@loopback/repository';
 import {promisify} from 'util';
-import {Task, retry} from '../utils/retry';
+import {RedisDataSource} from '../datasources/redis.datasource';
+import {ShoppingCart, ShoppingCartItem} from '../models';
+import {retry, Task} from '../utils/retry';
 
 export class ShoppingCartRepository extends DefaultKeyValueRepository<
   ShoppingCart
 > {
-  constructor(@inject('datasources.redis') ds: RedisDataSource) {
-    super(ShoppingCart, ds);
+  constructor(@inject('datasources.redis') dataSource: RedisDataSource) {
+    super(ShoppingCart, dataSource);
   }
 
   /**

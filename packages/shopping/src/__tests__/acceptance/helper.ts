@@ -1,4 +1,4 @@
-// Copyright IBM Corp. 2018. All Rights Reserved.
+// Copyright IBM Corp. 2019,2020. All Rights Reserved.
 // Node module: loopback4-example-shopping
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
@@ -18,6 +18,7 @@ export interface AppWithClient {
 export async function setupApplication(): Promise<AppWithClient> {
   const app = new ShoppingApplication({
     rest: givenHttpServerConfig(),
+    databaseSeeding: false,
   });
 
   await app.boot();

@@ -1,29 +1,32 @@
-// Copyright IBM Corp. 2018. All Rights Reserved.
+// Copyright IBM Corp. 2019,2020. All Rights Reserved.
 // Node module: loopback4-example-shopping
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
 
+import {authenticate} from '@loopback/authentication';
+import {authorize} from '@loopback/authorization';
 import {
-  repository,
-  Filter,
-  Where,
   Count,
   CountSchema,
+  Filter,
+  repository,
+  Where,
 } from '@loopback/repository';
-import {UserRepository} from '../repositories';
 import {
-  post,
-  get,
-  patch,
   del,
-  param,
-  requestBody,
+  get,
+  getFilterSchemaFor,
+  getWhereSchemaFor,
   HttpErrors,
+  param,
+  patch,
+  post,
+  requestBody,
 } from '@loopback/rest';
 import {Order} from '../models';
-import {authorize} from '@loopback/authorization';
-import {AuthenticationBindings, authenticate} from '@loopback/authentication';
-import {compareId} from '../services/id.compare.authorizor';
+import {UserRepository} from '../repositories';
+import {basicAuthorization} from '../services/basic.authorizor';
+import {OPERATION_SECURITY_SPEC} from '../utils/security-spec';
 
 /**
  * Controller for User's Orders
@@ -37,6 +40,7 @@ export class UserOrderController {
    * @param cart Shopping cart
    */
   @post('/users/{userId}/orders', {
+    security: OPERATION_SECURITY_SPEC,
     responses: {
       '200': {
         description: 'User.Order model instance',
@@ -45,23 +49,22 @@ export class UserOrderController {
     },
   })
   @authenticate('jwt')
-  @authorize({resource: 'order', scopes: ['create']})
+  @authorize({allowedRoles: ['customer'], voters: [basicAuthorization]})
   async createOrder(
     @param.path.string('userId') userId: string,
     @requestBody() order: Order,
   ): Promise<Order> {
-    // validate the payload value
-    // has nothing to do with authorization
-    if (userId !== order.userId) {
-      throw new HttpErrors.BadRequest(
-        `User id does not match: ${userId} !== ${order.userId}`,
-      );
-    }
-    delete order.userId;
-    return this.userRepo.orders(userId).create(order);
+    order.date = new Date().toString();
+    return this.userRepo
+      .orders(userId)
+      .create(order)
+      .catch(e => {
+        throw HttpErrors(400);
+      });
   }
 
   @get('/users/{userId}/orders', {
+    security: OPERATION_SECURITY_SPEC,
     responses: {
       '200': {
         description: "Array of User's Orders",
@@ -74,16 +77,18 @@ export class UserOrderController {
     },
   })
   @authenticate('jwt')
-  @authorize({resource: 'order', scopes: ['find'], voters: [compareId]})
+  @authorize({allowedRoles: ['customer'], voters: [basicAuthorization]})
   async findOrders(
     @param.path.string('userId') userId: string,
-    @param.query.string('filter') filter?: Filter<Order>,
+    @param.query.object('filter', getFilterSchemaFor(Order))
+    filter?: Filter<Order>,
   ): Promise<Order[]> {
     const orders = await this.userRepo.orders(userId).find(filter);
     return orders;
   }
 
   @patch('/users/{userId}/orders', {
+    security: OPERATION_SECURITY_SPEC,
     responses: {
       '200': {
         description: 'User.Order PATCH success count',
@@ -92,16 +97,17 @@ export class UserOrderController {
     },
   })
   @authenticate('jwt')
-  @authorize({resource: 'order', scopes: ['patch'], voters: [compareId]})
+  @authorize({allowedRoles: ['customer'], voters: [basicAuthorization]})
   async patchOrders(
     @param.path.string('userId') userId: string,
     @requestBody() order: Partial<Order>,
-    @param.query.string('where') where?: Where<Order>,
+    @param.query.object('where', getWhereSchemaFor(Order)) where?: Where<Order>,
   ): Promise<Count> {
     return this.userRepo.orders(userId).patch(order, where);
   }
 
   @del('/users/{userId}/orders', {
+    security: OPERATION_SECURITY_SPEC,
     responses: {
       '200': {
         description: 'User.Order DELETE success count',
@@ -110,10 +116,10 @@ export class UserOrderController {
     },
   })
   @authenticate('jwt')
-  @authorize({resource: 'order', scopes: ['delete'], voters: [compareId]})
+  @authorize({allowedRoles: ['customer'], voters: [basicAuthorization]})
   async deleteOrders(
     @param.path.string('userId') userId: string,
-    @param.query.string('where') where?: Where<Order>,
+    @param.query.object('where', getWhereSchemaFor(Order)) where?: Where<Order>,
   ): Promise<Count> {
     return this.userRepo.orders(userId).delete(where);
   }

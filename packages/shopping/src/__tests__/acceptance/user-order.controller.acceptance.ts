@@ -1,22 +1,23 @@
-// Copyright IBM Corp. 2018. All Rights Reserved.
+// Copyright IBM Corp. 2019,2020. All Rights Reserved.
 // Node module: loopback4-example-shopping
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
 
-import {supertest, expect} from '@loopback/testlab';
+import {expect, supertest} from '@loopback/testlab';
 import {ShoppingApplication} from '../..';
-import {OrderRepository, UserRepository} from '../../repositories';
-import {User, Order} from '../../models';
-import {setupApplication} from './helper';
 import {PasswordHasherBindings} from '../../keys';
+import {Order, User} from '../../models';
+import {OrderRepository, UserRepository} from '../../repositories';
+import {setupApplication} from './helper';
 
 describe('UserOrderController acceptance tests', () => {
   let app: ShoppingApplication;
   let client: supertest.SuperTest<supertest.Test>;
 
   const userData = {
-    email: 'testUserCtrl@loopback.io',
-    firstName: 'customer_service',
+    email: 'user@loopback.io',
+    firstName: 'John',
+    roles: ['customer'],
   };
 
   const userPassword = 'p4ssw0rd';
@@ -41,21 +42,27 @@ describe('UserOrderController acceptance tests', () => {
   it('creates an order for a user with a given orderId', async () => {
     const user = await givenAUser();
     const userId = user.id;
-    const order = givenAOrder({userId: userId, orderId: '1'});
-
+    const fullName = getFullName(user);
+    const order = givenAOrder({userId: userId, fullName, orderId: '1'});
     const token = await authenticateUser(user);
 
-    await client
+    const res = await client
       .post(`/users/${userId}/orders`)
       .set('Authorization', 'Bearer ' + token)
       .send(order)
-      .expect(200, order);
+      .expect(200);
+
+    const body = res.body;
+    // date property is set by the backend
+    delete body.date;
+    expect(body).to.deepEqual(order);
   });
 
   it('creates an order for a user without a given orderId', async () => {
     const user = await givenAUser();
     const userId = user.id;
-    const order = givenAOrder({userId: userId});
+    const fullName = getFullName(user);
+    const order = givenAOrder({userId: userId, fullName});
 
     const token = await authenticateUser(user);
 
@@ -65,15 +72,18 @@ describe('UserOrderController acceptance tests', () => {
       .send(order)
       .expect(200);
 
-    expect(res.body.orderId).to.be.a.String();
-    delete res.body.orderId;
-    expect(res.body).to.deepEqual(order);
+    const body = res.body;
+    expect(body.orderId).to.be.a.String();
+    delete body.date;
+    delete body.orderId;
+    expect(body).to.deepEqual(order);
   });
 
   it('throws an error when a userId in path does not match body', async () => {
     const user = await givenAUser();
     const userId = user.id;
-    const order = givenAOrder({userId: 'hello'});
+    const fullName = getFullName(user);
+    const order = givenAOrder({userId: 'hello', fullName});
 
     const token = await authenticateUser(user);
 
@@ -100,16 +110,31 @@ describe('UserOrderController acceptance tests', () => {
     beforeEach(givenUserAndOrders);
 
     it('retrieves orders for a given user', async () => {
-      const order = givenAOrder({userId: 'randomUserId', total: 100.99});
+      const fullName = getFullName(user);
+      const order = givenAOrder({
+        userId: 'randomUserId',
+        fullName,
+        total: 100.99,
+      });
       await orderRepo.create(order);
 
       const token = await authenticateUser(user);
 
-      const expected = [savedOrder1.toJSON(), savedOrder2.toJSON()];
-      await client
+      const expected: Partial<Order>[] = [
+        savedOrder1.toJSON(),
+        savedOrder2.toJSON(),
+      ];
+      const res = await client
         .get(`/users/${userId}/orders`)
         .set('Authorization', 'Bearer ' + token)
-        .expect(200, expected);
+        .expect(200);
+
+      const body = res.body;
+      body.forEach((o: Partial<Order>, i: number) => {
+        delete o.date;
+        delete expected[i].date;
+        expect(o).to.deepEqual(expected[i]);
+      });
     });
 
     it('patches all orders for a given user', async () => {
@@ -122,9 +147,16 @@ describe('UserOrderController acceptance tests', () => {
         .expect(200, {count: 2});
     });
 
-    // TODO(virkt25): Implement after issue below is fixed.
-    // https://github.com/strongloop/loopback-next/issues/100
-    it.skip('patches orders matching filter for a given user');
+    it('patches orders matching filter for a given user', async () => {
+      const token = await authenticateUser(user);
+
+      await client
+        .patch(`/users/${userId}/orders`)
+        .query({where: {total: 999.99}})
+        .set('Authorization', 'Bearer ' + token)
+        .send({total: 949.99})
+        .expect(200, {count: 1});
+    });
 
     it('deletes all orders for a given user', async () => {
       const token = await authenticateUser(user);
@@ -135,16 +167,23 @@ describe('UserOrderController acceptance tests', () => {
         .expect(200, {count: 2});
     });
 
-    // TODO(virkt25): Implement after issue below is fixed.
-    // https://github.com/strongloop/loopback-next/issues/100
-    it.skip('deletes orders matching filter for a given user');
+    it('deletes orders matching filter for a given user', async () => {
+      const token = await authenticateUser(user);
+
+      await client
+        .del(`/users/${userId}/orders`)
+        .query({where: {total: 999.99}})
+        .set('Authorization', 'Bearer ' + token)
+        .expect(200, {count: 1});
+    });
 
     async function givenUserAndOrders() {
       user = await givenAUser();
       userId = user.id;
-      order1 = givenAOrder();
+      const fullName = getFullName(user);
+      order1 = givenAOrder({userId: user.id, fullName});
       savedOrder1 = await saveOrder(user, order1);
-      order2 = givenAOrder();
+      order2 = givenAOrder({userId: user.id, fullName});
       order2.total = 999.99;
       savedOrder2 = await saveOrder(user, order2);
     }
@@ -191,7 +230,8 @@ describe('UserOrderController acceptance tests', () => {
         total: 99.99,
         products: [
           {
-            productId: 'product1',
+            productId: '1',
+            name: 'iPhone X',
             quantity: 10,
             price: 9.99,
           },
@@ -204,5 +244,9 @@ describe('UserOrderController acceptance tests', () => {
   async function saveOrder(user: User, order: Partial<Order>) {
     delete order.userId;
     return userRepo.orders(user.id).create(order);
+  }
+
+  function getFullName(user: User) {
+    return ((user.firstName ?? '') + ' ' + (user.lastName ?? '')).trim();
   }
 });

@@ -1,14 +1,14 @@
-// Copyright IBM Corp. 2019. All Rights Reserved.
-// Node module: @loopback/authentication
+// Copyright IBM Corp. 2019,2020. All Rights Reserved.
+// Node module: loopback4-example-shopping
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
 
+import {TokenService} from '@loopback/authentication';
+import {TokenServiceBindings} from '@loopback/authentication-jwt';
 import {inject} from '@loopback/context';
 import {HttpErrors} from '@loopback/rest';
+import {securityId, UserProfile} from '@loopback/security';
 import {promisify} from 'util';
-import {TokenService} from '@loopback/authentication';
-import {UserProfile, securityId} from '@loopback/security';
-import {TokenServiceBindings} from '../keys';
 
 const jwt = require('jsonwebtoken');
 const signAsync = promisify(jwt.sign);
@@ -41,6 +41,7 @@ export class JWTService implements TokenService {
           [securityId]: decodedToken.id,
           name: decodedToken.name,
           id: decodedToken.id,
+          roles: decodedToken.roles,
         },
       );
     } catch (error) {
@@ -60,7 +61,7 @@ export class JWTService implements TokenService {
     const userInfoForToken = {
       id: userProfile[securityId],
       name: userProfile.name,
-      email: userProfile.email,
+      roles: userProfile.roles,
     };
     // Generate a JSON Web Token
     let token: string;

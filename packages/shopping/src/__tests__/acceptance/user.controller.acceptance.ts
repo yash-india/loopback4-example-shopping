@@ -1,23 +1,25 @@
-// Copyright IBM Corp. 2018,2019. All Rights Reserved.
+// Copyright IBM Corp. 2019,2020. All Rights Reserved.
 // Node module: loopback4-example-shopping
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
 
+import {TokenServiceConstants} from '@loopback/authentication-jwt';
+import {securityId} from '@loopback/security';
 import {Client, expect} from '@loopback/testlab';
-import {ShoppingApplication} from '../..';
-import {UserRepository} from '../../repositories';
-import {setupApplication} from './helper';
+import {Server} from 'grpc';
 import {
+  createGRPCRecommendationServer,
   createRecommendationServer,
   HttpServer,
-  createGRPCRecommendationServer,
 } from 'loopback4-example-recommender';
-import {PasswordHasher} from '../../services/hash.password.bcryptjs';
-import {PasswordHasherBindings, TokenServiceConstants} from '../../keys';
-import {JWTService} from '../../services/jwt-service';
-import {securityId} from '@loopback/security';
+import {HTTPError} from 'superagent';
+import {ShoppingApplication} from '../..';
+import {PasswordHasherBindings} from '../../keys';
+import {UserRepository} from '../../repositories';
 import {RecommenderService} from '../../services';
-import {Server} from 'grpc';
+import {PasswordHasher} from '../../services/hash.password.bcryptjs';
+import {JWTService} from '../../services/jwt-service';
+import {setupApplication} from './helper';
 
 const recommendations = require('loopback4-example-recommender/data/recommendations.json');
 
@@ -31,6 +33,7 @@ describe('UserController', () => {
     email: 'test@loopback.io',
     firstName: 'Example',
     lastName: 'User',
+    roles: ['customer'],
   };
 
   const userPassword = 'p4ssw0rd';
@@ -90,7 +93,9 @@ describe('UserController', () => {
       })
       .expect(422);
 
-    const errorText = JSON.parse(res.error.text);
+    expect(res.error).to.not.eql(false);
+    const resError = res.error as HTTPError;
+    const errorText = JSON.parse(resError.text);
     expect(errorText.error.details[0].info.missingProperty).to.equal('email');
   });
 
@@ -118,17 +123,16 @@ describe('UserController', () => {
       })
       .expect(422);
 
-    const errorText = JSON.parse(res.error.text);
+    expect(res.error).to.not.eql(false);
+    const resError = res.error as HTTPError;
+    const errorText = JSON.parse(resError.text);
     expect(errorText.error.details[0].info.missingProperty).to.equal(
       'password',
     );
   });
 
   it('throws error for POST /users with a string', async () => {
-    const res = await client
-      .post('/users')
-      .send('hello')
-      .expect(415);
+    const res = await client.post('/users').send('hello').expect(415);
     expect(res.body.error.message).to.equal(
       'Content-type application/x-www-form-urlencoded does not match [application/json].',
     );
@@ -147,11 +151,9 @@ describe('UserController', () => {
     expect(res.body.error.message).to.equal('Email value is already taken');
   });
 
-  it('returns a user with given id when GET /users/{id} is invoked', async () => {
+  it('protects GET /users/{id} with authorization', async () => {
     const newUser = await createAUser();
-    delete newUser.orders;
-
-    await client.get(`/users/${newUser.id}`).expect(200, newUser.toJSON());
+    await client.get(`/users/${newUser.id}`).expect(401);
   });
 
   describe('authentication', () => {
@@ -206,9 +208,9 @@ describe('UserController', () => {
 
       const userProfile = res.body;
       expect(userProfile.id).to.equal(newUser.id);
-      expect(userProfile.name).to.equal(
-        `${newUser.firstName} ${newUser.lastName}`,
-      );
+      expect(userProfile.firstName).to.equal(newUser.firstName);
+      expect(userProfile.lastName).to.equal(newUser.lastName);
+      expect(userProfile.roles).to.deepEqual(newUser.roles);
     });
 
     it('users/me returns an error when a JWT token is not provided', async () => {
