@@ -50,6 +50,30 @@ all existing products, users, shopping cart and orders will be deleted too. If
 you don't want to reset the database, set `databaseSeeding` to `false` in the
 application configuration object.
 
+### Tests
+
+This repository comes with integration, unit, acceptance and end-to-end (e2e)
+tests. To execute these, see instructions below.
+
+`Note`: prior to running the e2e tests the application must be running. On a
+different terminal do:
+
+```sh
+$ npm start
+```
+
+then on another terminal do the following to execute e2e tests:
+
+```sh
+$ npm run test:ui
+```
+
+For other tests:
+
+```sh
+$ npm test
+```
+
 ## Models
 
 This app has the following models:
@@ -63,6 +87,15 @@ This app has the following models:
    many items (`items`) of the type `ShoppingCartItem`.
 6. `Order` - a model to represent an order by user, can have many products
    (`products`) of the type `ShoppingCartItem`.
+7. `KeyAndPassword` - a model to represent the user's password reset request
+8. `EmailTemplate` - a model to represent the email request template for
+   Nodemailer
+9. `NodeMailer` - a model to represent the response from Nodemailer after
+   sending reset password email
+10. `Envelope` - a model to represent the envelope portion of the response from
+    Nodemailer after sending reset password email
+11. `ResetPasswordInit` - a model to represent the request for initial password
+    reset step
 
 `ShoppingCart` and `Order` are marked as belonging to the `User` model by the
 use of the `@belongsTo` model decorator. Correspondingly, the `User` model is
@@ -81,12 +114,13 @@ Controllers expose API endpoints for interacting with the models and more.
 In this app, there are four controllers:
 
 1. `ping` - a simple controller to checking the status of the app.
-2. `user` - controller for creating user, fetching user info, updating user
-   info, and logging in.
+2. `user-management` - controller for creating user, fetching user info,
+   updating user info, and logging in.
 3. `shopping-cart` - controller for creating, updating, deleting shopping carts,
    and getting the details about a shopping cart.
 4. `user-order` - controller for creating, updating, deleting orders, and
    getting the details about an order.
+5. `product` - controller for managing products catalog
 
 ## Services
 
@@ -99,14 +133,15 @@ This app has five services:
 1. `services/recommender.service` - responsible for connecting to a "remote"
    server and getting recommendations for a user. The API endpoint at
    `GET /users​/{userId}​/recommend`, is made possible by this service.
-2. `services/user-service` - responsible for verifying if user exists and the
-   submitted password matches that of the existing user.
+2. `services/user-management.service` - responsible for verifying if user exists
+   and the submitted password matches that of the existing user.
 3. `services/hash.password.bcryptjs` - responsible for generating and comparing
    password hashes.
 4. `services/validator` - responsible for validating email and password when a
    new user is created.
-5. `services/jwt-service` - responsible for generating and verifying JSON Web
+5. `services/jwt.service` - responsible for generating and verifying JSON Web
    Token.
+6. `services/email.service` - responsible for sending reset password email
 
 ## Authentication
 
@@ -132,7 +167,7 @@ possible by the use of the `UserService` service provided by
 4. `return {token}` - send the JWT.
 
 You can see the details in
-[`packages/shopping/src/controllers/user.controller.ts`](https://github.com/strongloop/loopback4-example-shopping/blob/master/packages/shopping/src/controllers/user.controller.ts).
+[`packages/shopping/src/controllers/user-management.controller.ts`](https://github.com/strongloop/loopback4-example-shopping/blob/master/packages/shopping/src/controllers/user-management.controller.ts).
 
 ### Authorization
 
@@ -175,7 +210,8 @@ async set(
 
 There are three roles in this app: `admin`, `support`, and `customer`. You can
 go through the controller methods in
-[user-controller.ts](/packages/shopping/src/controllers/user.controller.ts) and
+[user-controller.ts](/packages/shopping/src/controllers/user-management.controller.ts)
+and
 [shopping-cart.controller.ts](/master/packages/shopping/src/controllers/shopping-cart.controller.ts)
 to see which roles are given access to which methods.
 
@@ -192,16 +228,47 @@ following rules:
 For more details about authorization in LoopBack 4, refer to
 https://loopback.io/doc/en/lb4/Loopback-component-authorization.html.
 
+### JWT secret
+
+By default, the JWTs will be signed using HS256 with a 64 character long string
+of random hex digits as secret. To use your own secret, set environment variable
+JWT_SECRET to the value of your own secret. You will want to use your own secret
+if running multiple instances of the application or want to generate or validate
+the JWTs in a different application.
+
+You can see the details in
+[`packages/shopping/src/application.ts`](./packages/shopping/src/application.ts).
+
+### Reset Password
+
+This repository includes a forgot password and reset password functionality that
+illustrates how shoppers can reset their password in the case they forgot them.
+Shoppers can either reset their password while logged in or locked out of the
+application. For this functionality we use Nodemailer. Please see
+https://nodemailer.com/usage/using-gmail/ if you're planning to use Nodemailer
+with Gmail. Additionally, to manage environment variables we use `dotenv`,
+therefore, you must create a `.env` file in the root of the project with the
+below contents:
+
+```dotenv
+SMTP_PORT=587
+SMTP_SERVER=smtp.gmail.com
+APPLICATION_URL=http://localhost:3000/ <endpoint-to-the-page-with-reset-password-form>
+SMTP_USERNAME=<gmail-username-for-account-used-to-send-email>
+SMTP_PASSWORD=<gmail-password-for-account-used-to-send-email>
+PASSWORD_RESET_EMAIL_LIMIT=2
+```
+
 ### Tutorial
 
 There is a tutorial which shows how to apply the JWT strategy to secure your
 endpoint with `@loopback/authentication@2.x`. You can check more details in
-https://loopback.io/doc/en/lb4/Authentication-Tutorial.html
+https://loopback.io/doc/en/lb4/Authentication-tutorial.html
 
 ### Trying It Out
 
 Please check the
-[try it out](https://loopback.io/doc/en/lb4/Authentication-Tutorial.html#try-it-out)
+[try it out](https://loopback.io/doc/en/lb4/Authentication-tutorial.html#try-it-out)
 section in the tutorial.
 
 ## Deploy to Cloud as Microservices

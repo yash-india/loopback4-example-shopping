@@ -153,6 +153,40 @@ const api = {
     }).promise();
   },
 
+  forgotPassword(body) {
+    const url = apiUrl + '/users/forgot-password';
+    const token = localStorage.getItem('shoppyToken');
+    return $.ajax({
+      type: 'PUT',
+      url: url,
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      data: JSON.stringify(body),
+      contentType: 'application/json',
+    }).promise();
+  },
+
+  passwordResetInit(body) {
+    const url = apiUrl + '/users/reset-password/init';
+    return $.ajax({
+      type: 'POST',
+      url: url,
+      data: JSON.stringify(body),
+      contentType: 'application/json',
+    }).promise();
+  },
+
+  passwordResetFinish(body) {
+    const url = apiUrl + '/users/reset-password/finish';
+    return $.ajax({
+      type: 'PUT',
+      url: url,
+      data: JSON.stringify(body),
+      contentType: 'application/json',
+    }).promise();
+  },
+
   me() {
     const url = apiUrl + '/users/me';
     const token = localStorage.getItem('shoppyToken');

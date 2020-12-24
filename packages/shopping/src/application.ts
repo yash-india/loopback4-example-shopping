@@ -15,23 +15,18 @@ import {
   BindingKey,
   createBindingFromClass,
 } from '@loopback/core';
-import {
-  model,
-  property,
-  RepositoryMixin,
-  SchemaMigrationOptions,
-} from '@loopback/repository';
+import {RepositoryMixin, SchemaMigrationOptions} from '@loopback/repository';
 import {RestApplication} from '@loopback/rest';
 import {
   RestExplorerBindings,
   RestExplorerComponent,
 } from '@loopback/rest-explorer';
 import {ServiceMixin} from '@loopback/service-proxy';
+import crypto from 'crypto';
 import fs from 'fs';
-import _ from 'lodash';
 import path from 'path';
 import {PasswordHasherBindings, UserServiceBindings} from './keys';
-import {User} from './models';
+import {UserWithPassword} from './models';
 import {
   OrderRepository,
   ProductRepository,
@@ -39,10 +34,12 @@ import {
   UserRepository,
 } from './repositories';
 import {MyAuthenticationSequence} from './sequence';
-import {BcryptHasher} from './services/hash.password.bcryptjs';
-import {JWTService} from './services/jwt-service';
-import {SecuritySpecEnhancer} from './services/jwt-spec.enhancer';
-import {MyUserService} from './services/user-service';
+import {
+  UserManagementService,
+  BcryptHasher,
+  SecuritySpecEnhancer,
+  JWTService,
+} from './services';
 import YAML = require('yaml');
 
 /**
@@ -56,15 +53,6 @@ export interface PackageInfo {
 export const PackageKey = BindingKey.create<PackageInfo>('application.package');
 
 const pkg: PackageInfo = require('../package.json');
-
-@model()
-export class NewUser extends User {
-  @property({
-    type: 'string',
-    required: true,
-  })
-  password: string;
-}
 
 export class ShoppingApplication extends BootMixin(
   ServiceMixin(RepositoryMixin(RestApplication)),
@@ -112,8 +100,14 @@ export class ShoppingApplication extends BootMixin(
     this.bind(PasswordHasherBindings.PASSWORD_HASHER).toClass(BcryptHasher);
     this.bind(TokenServiceBindings.TOKEN_SERVICE).toClass(JWTService);
 
-    this.bind(UserServiceBindings.USER_SERVICE).toClass(MyUserService);
+    this.bind(UserServiceBindings.USER_SERVICE).toClass(UserManagementService);
     this.add(createBindingFromClass(SecuritySpecEnhancer));
+
+    // Use JWT secret from JWT_SECRET environment variable if set
+    // otherwise create a random string of 64 hex digits
+    const secret =
+      process.env.JWT_SECRET ?? crypto.randomBytes(32).toString('hex');
+    this.bind(TokenServiceBindings.TOKEN_SECRET).to(secret);
   }
 
   // Unfortunately, TypeScript does not allow overriding methods inherited
@@ -148,9 +142,6 @@ export class ShoppingApplication extends BootMixin(
     }
 
     // Pre-populate users
-    const passwordHasher = await this.get(
-      PasswordHasherBindings.PASSWORD_HASHER,
-    );
     const userRepo = await this.getRepository(UserRepository);
     await userRepo.deleteAll();
     const usersDir = path.join(__dirname, '../fixtures/users');
@@ -160,12 +151,11 @@ export class ShoppingApplication extends BootMixin(
       if (file.endsWith('.yml')) {
         const userFile = path.join(usersDir, file);
         const yamlString = YAML.parse(fs.readFileSync(userFile, 'utf8'));
-        const input = new NewUser(yamlString);
-        const password = await passwordHasher.hashPassword(input.password);
-        input.password = password;
-        const user = await userRepo.create(_.omit(input, 'password'));
-
-        await userRepo.userCredentials(user.id).create({password});
+        const userWithPassword = new UserWithPassword(yamlString);
+        const userManagementService = await this.get<UserManagementService>(
+          UserServiceBindings.USER_SERVICE,
+        );
+        await userManagementService.createUser(userWithPassword);
       }
     }
 

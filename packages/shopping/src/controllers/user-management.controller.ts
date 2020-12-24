@@ -1,4 +1,4 @@
-// Copyright IBM Corp. 2019,2020. All Rights Reserved.
+// Copyright IBM Corp. 2020. All Rights Reserved.
 // Node module: loopback4-example-shopping
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
@@ -24,18 +24,29 @@ import {
 import {SecurityBindings, securityId, UserProfile} from '@loopback/security';
 import _ from 'lodash';
 import {PasswordHasherBindings, UserServiceBindings} from '../keys';
-import {Product, User} from '../models';
-import {UserRepository} from '../repositories';
-import {Credentials} from '../repositories/user.repository';
-import {basicAuthorization} from '../services/basic.authorizor';
-import {PasswordHasher} from '../services/hash.password.bcryptjs';
-import {RecommenderService} from '../services/recommender.service';
-import {validateCredentials} from '../services/validator';
-import {OPERATION_SECURITY_SPEC} from '../utils/security-spec';
+import {
+  NodeMailer,
+  Product,
+  ResetPasswordInit,
+  User,
+  KeyAndPassword,
+} from '../models';
+import {Credentials, UserRepository} from '../repositories';
+import {
+  basicAuthorization,
+  PasswordHasher,
+  RecommenderService,
+  UserManagementService,
+  validateCredentials,
+  validateKeyPassword,
+} from '../services';
+import {OPERATION_SECURITY_SPEC} from '../utils';
 import {
   CredentialsRequestBody,
+  PasswordResetRequestBody,
   UserProfileSchema,
 } from './specs/user-controller.specs';
+import isemail from 'isemail';
 
 @model()
 export class NewUserRequest extends User {
@@ -46,9 +57,10 @@ export class NewUserRequest extends User {
   password: string;
 }
 
-export class UserController {
+export class UserManagementController {
   constructor(
-    @repository(UserRepository) public userRepository: UserRepository,
+    @repository(UserRepository)
+    public userRepository: UserRepository,
     @inject('services.RecommenderService')
     public recommender: RecommenderService,
     @inject(PasswordHasherBindings.PASSWORD_HASHER)
@@ -57,6 +69,8 @@ export class UserController {
     public jwtService: TokenService,
     @inject(UserServiceBindings.USER_SERVICE)
     public userService: UserService<User, Credentials>,
+    @inject(UserServiceBindings.USER_SERVICE)
+    public userManagementService: UserManagementService,
   ) {}
 
   @post('/users', {
@@ -90,23 +104,9 @@ export class UserController {
     // ensure a valid email value and password value
     validateCredentials(_.pick(newUserRequest, ['email', 'password']));
 
-    // encrypt the password
-    const password = await this.passwordHasher.hashPassword(
-      newUserRequest.password,
-    );
-
     try {
-      // create the new user
-      const savedUser = await this.userRepository.create(
-        _.omit(newUserRequest, 'password'),
-      );
-
-      // set the password
-      await this.userRepository
-        .userCredentials(savedUser.id)
-        .create({password});
-
-      return savedUser;
+      newUserRequest.resetKey = '';
+      return await this.userManagementService.createUser(newUserRequest);
     } catch (error) {
       // MongoError 11000 duplicate key
       if (error.code === 11000 && error.errmsg.includes('index: uniqueEmail')) {
@@ -148,8 +148,7 @@ export class UserController {
       if (!currentUserProfile.roles.includes('admin')) {
         delete user.roles;
       }
-      const updatedUser = await this.userRepository.updateById(userId, user);
-      return updatedUser;
+      return await this.userRepository.updateById(userId, user);
     } catch (e) {
       return e;
     }
@@ -259,5 +258,121 @@ export class UserController {
     const token = await this.jwtService.generateToken(userProfile);
 
     return {token};
+  }
+
+  @put('/users/forgot-password', {
+    security: OPERATION_SECURITY_SPEC,
+    responses: {
+      '200': {
+        description: 'The updated user profile',
+        content: {
+          'application/json': {
+            schema: UserProfileSchema,
+          },
+        },
+      },
+    },
+  })
+  @authenticate('jwt')
+  async forgotPassword(
+    @inject(SecurityBindings.USER)
+    currentUserProfile: UserProfile,
+    @requestBody(PasswordResetRequestBody) credentials: Credentials,
+  ): Promise<{token: string}> {
+    const {email, password} = credentials;
+    const {id} = currentUserProfile;
+
+    const user = await this.userRepository.findById(id);
+
+    if (!user) {
+      throw new HttpErrors.NotFound('User account not found');
+    }
+
+    if (email !== user?.email) {
+      throw new HttpErrors.Forbidden('Invalid email address');
+    }
+
+    validateCredentials(_.pick(credentials, ['email', 'password']));
+
+    const passwordHash = await this.passwordHasher.hashPassword(password);
+
+    await this.userRepository
+      .userCredentials(user.id)
+      .patch({password: passwordHash});
+
+    const userProfile = this.userService.convertToUserProfile(user);
+
+    const token = await this.jwtService.generateToken(userProfile);
+
+    return {token};
+  }
+
+  @post('/users/reset-password/init', {
+    responses: {
+      '200': {
+        description: 'Confirmation that reset password email has been sent',
+      },
+    },
+  })
+  async resetPasswordInit(
+    @requestBody() resetPasswordInit: ResetPasswordInit,
+  ): Promise<string> {
+    if (!isemail.validate(resetPasswordInit.email)) {
+      throw new HttpErrors.UnprocessableEntity('Invalid email address');
+    }
+
+    const nodeMailer: NodeMailer = await this.userManagementService.requestPasswordReset(
+      resetPasswordInit.email,
+    );
+
+    if (nodeMailer.accepted.length) {
+      return 'Successfully sent reset password link';
+    }
+    throw new HttpErrors.InternalServerError(
+      'Error sending reset password email',
+    );
+  }
+
+  @put('/users/reset-password/finish', {
+    responses: {
+      '200': {
+        description: 'A successful password reset response',
+      },
+    },
+  })
+  async resetPasswordFinish(
+    @requestBody() keyAndPassword: KeyAndPassword,
+  ): Promise<string> {
+    validateKeyPassword(keyAndPassword);
+
+    const foundUser = await this.userRepository.findOne({
+      where: {resetKey: keyAndPassword.resetKey},
+    });
+
+    if (!foundUser) {
+      throw new HttpErrors.NotFound(
+        'No associated account for the provided reset key',
+      );
+    }
+
+    const user = await this.userManagementService.validateResetKeyLifeSpan(
+      foundUser,
+    );
+
+    const passwordHash = await this.passwordHasher.hashPassword(
+      keyAndPassword.password,
+    );
+
+    try {
+      await this.userRepository
+        .userCredentials(user.id)
+        .patch({password: passwordHash});
+
+      await this.userRepository.updateById(user.id, user);
+    } catch (e) {
+      return e;
+    }
+
+    return 'Password reset successful';
   }
 }
